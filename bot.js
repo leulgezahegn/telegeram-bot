@@ -6,7 +6,7 @@ const token = '7465285349:AAGzhl1kALJJ9dhfkmbZulc6o267uu6To0g';
 const bot = new TelegramBot(token, { polling: true });
 
 // MongoDB connection URI
-const mongoUri = 'mongodb://127.0.0.1:27017';
+const mongoUri = 'mongodb+srv://kukuassefa18:exRsElJdQ5Mu99l8@telegrambotapi.x69ku.mongodb.net/?retryWrites=true&w=majority&appName=TelegramBotAPI';
 const client = new MongoClient(mongoUri);
 const dbName = 'mybot';
 const collectionName = 'users';
@@ -51,22 +51,36 @@ bot.onText(/\/start/, async (msg) => {
     }
 });
 
-bot.onText(/\/referrals/, async (msg) => {
+bot.onText(/\/start/, async (msg) => {
     const chatId = msg.chat.id;
+    const userId = msg.from.id;
 
     const db = client.db(dbName);
     const collection = db.collection(collectionName);
 
-    // Retrieve all users (for demo purposes)
-    const users = await collection.find().toArray();
-    let message = 'Referrals:\n';
+    // Check if the user already exists in the database
+    let user = await collection.findOne({ userId });
+    if (!user) {
+        // Create a new user with a dynamic referral link
+        const referralCode = generateRandomString(8); 
+        const referralLink = `https://t.me/leul50_bot?start=${userId}`;
+        await collection.insertOne({ userId, chatId, referralLink });
 
-    users.forEach(user => {
-        message += `User ID: ${user.userId}, Referral Link: ${user.referralLink}\n`;
-    });
-
-    bot.sendMessage(chatId, message || 'No referrals found.');
+        // Send a message with two buttons
+        bot.sendMessage(chatId, 'Welcome! Choose an action:', {
+            reply_markup: {
+                keyboard: [
+                    [{ text: 'Generate URL' }, { text: 'Explore' }]
+                ],
+                resize_keyboard: true,
+                one_time_keyboard: true
+            }
+        });
+    } else {
+        bot.sendMessage(chatId, `Welcome back! Your referral link: ${user.referralLink}`);
+    }
 });
+
 
 bot.onText(/\/help/, (msg) => {
     const chatId = msg.chat.id;
