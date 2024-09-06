@@ -1,15 +1,15 @@
 const TelegramBot = require('node-telegram-bot-api');
 const { MongoClient } = require('mongodb');
+require('dotenv').config(); // Load .env file
 
-// Replace with your Telegram Bot API token
-const token = '7465285349:AAGzhl1kALJJ9dhfkmbZulc6o267uu6To0g';
+// Load environment variables
+const token = process.env.TELEGRAM_BOT_TOKEN;
+const mongoUri = process.env.MONGO_URI;
+const dbName = process.env.DB_NAME;
+const collectionName = process.env.COLLECTION_NAME;
+
 const bot = new TelegramBot(token, { polling: true });
-
-// MongoDB connection URI
-const mongoUri = 'mongodb+srv://kukuassefa18:exRsElJdQ5Mu99l8@telegrambotapi.x69ku.mongodb.net/?retryWrites=true&w=majority&appName=TelegramBotAPI';
 const client = new MongoClient(mongoUri);
-const dbName = 'mybot';
-const collectionName = 'users';
 
 async function connectToMongo() {
     try {
@@ -21,6 +21,7 @@ async function connectToMongo() {
 }
 
 connectToMongo();
+
 function generateRandomString(length) {
     const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
     let result = '';
@@ -41,8 +42,6 @@ bot.onText(/\/start/, async (msg) => {
     // Check if the user already exists in the database
     let user = await collection.findOne({ userId });
     if (!user) {
-        // Create a new user with a dynamic referral link
-        const referralCode = generateRandomString(8); 
         const referralLink = `https://t.me/leul50_bot?start=${userId}`;
         await collection.insertOne({ userId, chatId, referralLink });
         bot.sendMessage(chatId, `Welcome! Your referral link: ${referralLink}`);
@@ -51,43 +50,12 @@ bot.onText(/\/start/, async (msg) => {
     }
 });
 
-bot.onText(/\/start/, async (msg) => {
-    const chatId = msg.chat.id;
-    const userId = msg.from.id;
-
-    const db = client.db(dbName);
-    const collection = db.collection(collectionName);
-
-    // Check if the user already exists in the database
-    let user = await collection.findOne({ userId });
-    if (!user) {
-        // Create a new user with a dynamic referral link
-        const referralCode = generateRandomString(8); 
-        const referralLink = `https://t.me/leul50_bot?start=${userId}`;
-        await collection.insertOne({ userId, chatId, referralLink });
-
-        // Send a message with two buttons
-        bot.sendMessage(chatId, 'Welcome! Choose an action:', {
-            reply_markup: {
-                keyboard: [
-                    [{ text: 'Generate URL' }, { text: 'Explore' }]
-                ],
-                resize_keyboard: true,
-                one_time_keyboard: true
-            }
-        });
-    } else {
-        bot.sendMessage(chatId, `Welcome back! Your referral link: ${user.referralLink}`);
-    }
-});
-
-
 bot.onText(/\/help/, (msg) => {
     const chatId = msg.chat.id;
     const helpMessage = `
     Commands:
     /start - Get your referral link.
-    /referrals - List all referrals (for admin use).
+    /help - Display help.
     `;
     bot.sendMessage(chatId, helpMessage);
 });
