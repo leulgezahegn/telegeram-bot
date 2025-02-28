@@ -31,6 +31,7 @@ const messages = {
         unlockCourse: "Unlock Course",
         competitions: "Competitions",
         referralProgress: "Referral Progress",
+         referralProgressMessage: "You have referred {count} people.",
         help: "Help",
         support: "Contact Support",
         cashout: "Cashout",
@@ -38,24 +39,26 @@ const messages = {
         selectBank: "Please choose your bank:",
         enterAccount: "Please enter your account number:",
         enterPhone: "Please enter your phone number:" },
-    am: { welcome: "እንኳን ወደ በቀላሉ ገንዘብ መሰብሰቢያመሰብሰቢያ ቦት በደህና መጡ! 🎉",
+    am: { welcome: "እንኳን ወደ በቀላሉ ገንዘብ መሰብሰቢያ ቦት በደህና መጡ! 🎉",
         selectLanguage: "እባኮትን የሚወዷቸውን ቋንቋ ይምረጡ፡",
-        referralLink: "የእርስዎ ልዩ የማጋረጃ አገናኝ፡ ",
+        referralLink: "የእርስዎ ልዩ የማጋረያ አገናኝ፡ ",
         unlockCourse: "ኮርስ ይክፈቱ",
         competitions: "ውድድሮች",
-        referralProgress: "የማጋረጃ ሂደት",
+        referralProgress: "የማጋረያ ሂደት",
+        referralProgressMessage: "እስካሁን ያስመረቀዎት ሰዎች {count} ናቸው።",
         help: "እርዳታ",
-        support: "የደጋፊ መረጃ",
+        support: "የድጋፍፍ መረጃ",
         cashout: "ገንዘብ ያውጡ",
         needReferral: "ኮርሱን ለመክፈት 5 ሰዎችን ማጋረጃ አለቦት።",
         selectBank: "እባኮትን የሚወዷቸውን ባንክ ይምረጡ፡",
         enterAccount: "እባኮትን የባንክ መለያ ቁጥር ያስገቡ፡",
         enterPhone: "እባኮትን የስልክ ቁጥርዎን ያስገቡ፡" },
-    om: { welcome: "Baga nagaan dhuftan! 🎉",selectLanguage: "Mee afaan filadhu:",
+    or: { welcome: "Baga nagaan dhuftan! 🎉",selectLanguage: "Mee afaan filadhu:",
         referralLink: "Linkii kee addaa: ",
         unlockCourse: "Koorso banuu",
         competitions: "Tapha dorgommii",
         referralProgress: "Sadarkaa maqa-gaggeessuu",
+        referralProgressMessage: "Namoota {count} affeerte.",
         help: "Gargaarsa",
         support: "Gargaarsa qunnamuu",
         cashout: "Mallaqa baasuu",
@@ -75,30 +78,53 @@ async function sendWelcomeMessage(chatId, user) {
     bot.sendMessage(chatId, `${messages[userLang].welcome}\n\n${messages[userLang].referralLink}`);
 }
 
+
+
+
 // Handle /start command
 bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
-    const referrerId = match ? match[0] : null; // Extract referrer ID if present
-
+    const referrerId = match && match[1] ? parseInt(match[1]) : null; // Extract referrer ID if present
+    console.log(`User ${userId} started bot with referrerId: ${referrerId}`);
     const db = client.db(dbName);
     const collection = db.collection(collectionName)
+    let user = await collection.findOne({ userId });
 
     try {
-        let user = await collection.findOne({ userId });
 
         if (!user) {
             // Generate referral link
-            const referralLink = (`https://t.me/DailyCash?start=${userId}`, { parse_mode: 'Markdown' });
+            //const referralLink = (`https://t.me/DailyCash?start=${userId}`, { parse_mode: 'Markdown' });
             await collection.insertOne({ 
                 userId, 
                 chatId, 
-                referralLink, 
+                referralLink:`https://t.me/leul50_bot?start=${userId}`,
                 language: 'en', // Default language
                 referralCount: 0,
-                referrerId: referrerId ? parseInt(referrerId) : null // Store referrer ID if available
+                balance: 0,
+                referrerId: referrerId ? parseInt(referrerId) : null, // Store referrer ID if available
+                taskCompleted: { task1: false, task2: false },
             });
-     
+            if (referrerId && referrerId !== userId) {
+                console.log(`Processing referral reward for referrer: ${referrerId}`);
+    
+                const referrer = await collection.findOne({ userId: referrerId });
+    
+                if (referrer) {
+                    await collection.updateOne(
+                        { userId: referrerId },
+                        { $inc: { referralCount: 1, balance: 5 } }
+                    );
+    
+                    console.log(`Referral count updated for referrer ${referrerId}`);
+    
+                    bot.sendMessage(referrer.chatId, `🎉 You earned 5 Birr! Your referral count: ${referrer.referralCount + 1}`);
+                } else {
+                    console.log(`Referrer ${referrerId} not found in database`);
+                }
+            }
+            //bot.sendMessage(chatId, "✅ Welcome to the bot!");
             // Ask user to select language
             return bot.sendMessage(chatId, "Please select your preferred language:", {
                 reply_markup: {
@@ -108,25 +134,34 @@ bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
                 }
             });
         } 
+        // If user exists, skip language prompt
+        let userLang = user.language || 'en'; // Default to 'en' if no language is set
+       
+// ... rest of the code remains the same ...
+        // Send welcome message
+        //sendWelcomeMessage(chatId, user);
+        bot.sendMessage(chatId, `${messages[userLang].welcome}\n\nReferral link: ${user.referralLink}`);
 
-        // Existing user: Retrieve stored language and send welcome message
-        const userLang = user.language || 'en';
-        bot.sendMessage(chatId, `${messages[userLang].welcome}\n\n${messages[userLang].referralLink} ${user.referralLink}`);
 
-        // Show main menu
-        return bot.sendMessage(chatId, 'Choose an option:', {
+
+        // Proceed to main menu
+        return bot.sendMessage(chatId, "Choose an option:", {
             reply_markup: {
                 keyboard: [
-                    
                     [{ text: 'Unlock Course' }, { text: 'Competitions' }],
                     [{ text: 'Referral Progress' }, { text: 'Language' }],
-                    [{ text: 'Contact Support' }, { text: 'Cashout' }],
-                    [{ text: 'Complete Task' }]  
+                    [{ text: 'Support' }, { text: 'Cashout' }],
+                    [{ text: 'Complete Task' }, { text: 'Check Balance' }]
                 ],
                 resize_keyboard: true,
                 one_time_keyboard: false
             }
         });
+    
+        
+    
+
+        
 
     } catch (error) {
         console.error("Error in /start command:", error);
@@ -147,28 +182,48 @@ bot.on('message', async (msg) => {
         oromo: 'or'
     };
 
-    if (languages[text]) {
-        const db = client.db(dbName);
-        const collection = db.collection(collectionName);
-        await collection.updateOne({ userId }, { $set: { language: languages[text] } });
+    const db = client.db(dbName);
+    const collection = db.collection(collectionName);
 
-        bot.sendMessage(chatId, `Language set to ${text.charAt(0).toUpperCase() + text.slice(1)}! 🎉`);
-        
-        // Proceed to show main menu
-        return bot.sendMessage(chatId, 'Choose an option:', {
-            reply_markup: {
-                keyboard: [
-                    [{ text: 'Unlock Course' }, { text: 'Competitions' }],
-                    [{ text: 'Referral Progress' }, { text: 'Language' }],
-                    [{ text: 'Contact Support' }, { text: 'Cashout' }],
-                    [{ text: 'Complete Task' }]  
-                ],
-                resize_keyboard: true,
-                one_time_keyboard: false
-            }
-        });
+    // 🔹 Check if user already has a language set
+    let user = await collection.findOne({ userId });
+
+    if (!user) {
+        // New user, ask for language selection
+        return bot.sendMessage(chatId, "Please select your language: English, Amharic, or Oromo.");
     }
+
+    let userLang = user.language || 'en'; // Default to English if missing
+
+    if (languages[text]) {
+        // Update the selected language
+        const selectedLang = languages[text];
+
+        await collection.updateOne(
+            { userId },
+            { $set: { language: selectedLang } },
+            { upsert: true }
+        );
+
+        userLang = selectedLang;
+        bot.sendMessage(chatId, `Language set to ${text.charAt(0).toUpperCase() + text.slice(1)}! 🎉`);
+    }
+
+    // ✅ Proceed to main menu without asking for language again
+    return bot.sendMessage(chatId, messages[userLang].welcome, {
+        reply_markup: {
+            keyboard: [
+                [{ text: messages[userLang].unlockCourse}, { text: messages[userLang].competitions }],
+                [{ text: messages[userLang].referralProgress }, { text: 'Language' }],
+                [{ text: messages[userLang].support }, { text: messages[userLang].cashout }],
+                [{ text: 'Complete Task' }, { text: 'Check Balance' }]
+            ],
+            resize_keyboard: true,
+            one_time_keyboard: false
+        }
+    });
 });
+
 
 // Handle "Complete Task" button
 bot.on('message', async (msg) => {
@@ -182,7 +237,7 @@ bot.on('message', async (msg) => {
     let user = await collection.findOne({ userId });
 
     if (text === 'Complete Task') {
-        if (user && user.taskCompleted) {
+        if (user && user.taskCompleted && user.taskCompleted.task1 && user.taskCompleted.task2) {
             return bot.sendMessage(chatId, "✅ You have already completed this task and received your reward.");
         }
 
@@ -213,6 +268,7 @@ bot.on('callback_query', async (callbackQuery) => {
         }
 
         // Reward user with 5 Birr
+        let taskField = 'task1';
         await collection.updateOne(
             { userId },
             { $set: { taskCompleted: true }, $inc: { balance: 5 } }
@@ -222,6 +278,64 @@ bot.on('callback_query', async (callbackQuery) => {
         bot.sendMessage(chatId, "💰 5 Birr has been added to your balance!");
     }
 });
+
+bot.on('message', async (msg) => {
+    const chatId = msg.chat.id;
+    const text = msg.text;
+
+    if (text === 'Check Task Status') {
+        const db = client.db(dbName);
+        const collection = db.collection(collectionName);
+
+        let user = await collection.findOne({ userId: msg.from.id });
+
+        if (user) {
+            const tasks = user.taskCompleted;
+            let incompleteTasks = Object.keys(tasks).filter(task => !tasks[task]);
+            if (incompleteTasks.length > 0) {
+                return bot.sendMessage(chatId, `❌ You still need to complete the following tasks:\n- ${incompleteTasks.join('\n- ')}`);
+            } else {
+                return bot.sendMessage(chatId, "🎉 You have completed all tasks!");
+            }
+        } else {
+            return bot.sendMessage(chatId, "Sorry, we couldn't find your task progress.");
+        }
+    }
+});
+
+// Handle "Balance" option clicked by the user
+bot.on('message', async (msg) => {
+    const chatId = msg.chat.id;
+    const text = msg.text.toLowerCase();
+
+    // Check if user selected the 'Balance' option
+    if (text === 'check balance') {
+        const db = client.db(dbName);
+        const collection = db.collection(collectionName);
+
+        // Find the user in the database using their userId
+        const user = await collection.findOne({ userId: msg.from.id });
+
+        if (user) {
+            // Retrieve balance details
+            const totalBalance = user.balance || 0;
+            const referralBalance = user.referralBalance || 0;
+            const taskDoneBalance = user.taskDoneBalance || 0;
+
+            // Send the balance details to the user
+            return bot.sendMessage(chatId, `
+                📊 **Your Balance Overview:**
+                
+                - Total Balance: ${totalBalance} Birr
+                
+            `);
+        } else {
+            // If user is not found in database
+            return bot.sendMessage(chatId, "Sorry, we couldn't find your balance. Please try again later.");
+        }
+    }
+});
+
 // Handle user messages (including language selection)
 bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
@@ -235,7 +349,7 @@ bot.on('message', async (msg) => {
         let user = await collection.findOne({ userId });
 
         if (['English', 'Amharic', 'Oromo'].includes(text)) {
-            let selectedLang = text === 'Amharic' ? 'am' : text === 'Oromo' ? 'om' : 'en';
+            let selectedLang = text === 'Amharic' ? 'am' : text === 'Oromo' ? 'or' : 'en';
             await collection.updateOne({ userId }, { $set: { language: selectedLang } });
 
             bot.sendMessage(chatId, messages[selectedLang].welcome);
@@ -245,6 +359,7 @@ bot.on('message', async (msg) => {
         let userLang = user ? user.language : 'en';
 
         if (text === 'Cashout') {
+            const userLang = cashoutData[chatId]?.language || 'en';
             bot.sendMessage(chatId, 'Please choose your bank:', {
                 reply_markup: {
                     keyboard: [
@@ -259,8 +374,9 @@ bot.on('message', async (msg) => {
         } else if (['CBEBirr', 'Commercial Bank of Ethiopia (CBE)', 'M-Pesa', 'telebirr'].includes(text)) {
             if (!cashoutData[chatId]) return;
             cashoutData[chatId].bank = text;
-
-            bot.sendMessage(chatId, text === 'Commercial Bank of Ethiopia (CBE)' ? 'Please enter your account number:' : 'Please enter your phone number:');
+            const userLang = cashoutData[chatId]?.language || 'en';
+            bot.sendMessage(chatId, text === 'Commercial Bank of Ethiopia (CBE)' ? messages[userLang].enterAccountNumber 
+                : messages[userLang].enterPhoneNumber); 
         } else if (cashoutData[chatId] && cashoutData[chatId].bank) {
             cashoutData[chatId].accountNumber = text;
             cashoutData[chatId].amount = 10;
@@ -320,10 +436,28 @@ bot.on('message', async (msg) => {
 
         let user = await collection.findOne({ userId });
         console.log("User data from DB:", user);
-        
-        const referralCount = user && user.referralCount ? user.referralCount : 0;
-            bot.sendMessage(chatId, `You have referred ${referralCount} people.`);
+            
+        if (user) {
+            let userLang = user?.language && messages[user.language] ? user.language : 'en';
+            let messageTemplate = messages[userLang]?.referralProgressMessage || "You have referred {count} people.";
+            const referralCount = user && user.referralCount ? user.referralCount : 0;
+            bot.sendMessage(chatId, messageTemplate.replace("{count}", referralCount));
+
+            let referralProgressMessage = messageTemplate.replace("{count}", referralCount);
+        referralProgressMessage += `\n\nYour referral link: ${user.referralLink}`; // Add referral link
+
+        bot.sendMessage(chatId, referralProgressMessage);
+    } else {
+        bot.sendMessage(chatId, "Sorry, we couldn't find your referral progress. Please try again later.");
+
         }
+
+        //let userLang = user?.language && messages[user.language] ? user.language : 'en';
+        //let messageTemplate = messages[userLang]?.referralProgressMessage || "You have referred {count} people.";
+        //const referralCount = user && user.referralCount ? user.referralCount : 0;
+        //bot.sendMessage(chatId, messageTemplate.replace("{count}", referralCount));
+        }
+        
     } catch (error) {
         console.error("Error handling message:", error);
         bot.sendMessage(chatId, "nopeAn error occurred. Please try again later.");
