@@ -9,6 +9,10 @@ const token = process.env.TELEGRAM_BOT_TOKEN;
 const mongoUri = process.env.MONGO_URI;
 const dbName = process.env.DB_NAME;
 const collectionName = process.env.COLLECTION_NAME;
+const collectionName2 = process.env.COLLECTION_NAME2;
+
+const adminId = process.env.ADMIN_ID;
+
 
 const bot = new TelegramBot(token, { polling: true });
 const client = new MongoClient(mongoUri);
@@ -78,10 +82,124 @@ async function sendWelcomeMessage(chatId, user) {
     bot.sendMessage(chatId, `${messages[userLang].welcome}\n\n${messages[userLang].referralLink}`);
 }
 
-
+function checkIfAdmin(userId) {
+    return adminId.includes(userId);
+}
 
 
 // Handle /start command
+bot.onText(/\/admin/, (msg) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id; 
+
+
+    if (!checkIfAdmin(userId)) {
+        bot.sendMessage(chatId, "❌ You are not authorized to access the admin panel.");
+        return;
+    }
+    bot.sendMessage(chatId, "🔧 Admin Panel", {
+        reply_markup: {
+            inline_keyboard: [
+                [{ text: '📊 View Stats', callback_data: 'view_stats' }],
+                [{ text: '🚫 Ban User', callback_data: 'ban_user' }],
+                [{ text: '✅ Approve Payment', callback_data: 'approve_payment' }],
+                [{ text: '📢 Send Notification', callback_data: 'send_notification' }],
+                [{ text: '🛑 Approve Only YouTube Tasks', callback_data: 'approve_youtube' }],
+                [{ text: "➕ Add Task", callback_data: "admin_add_task" }],
+                [{ text: "📋 View Tasks", callback_data: "admin_view_tasks" }],
+                [{ text: "❌ Delete Task", callback_data: "admin_delete_task" }]
+            
+            ]
+        }
+    });
+   
+});
+
+
+let pendingAction = null;
+
+
+bot.on('callback_query', async (callbackQuery) => {
+    const chatId = callbackQuery.message.chat.id;
+    const userId = callbackQuery.from.id;
+    const data = callbackQuery.data;
+    if (!checkIfAdmin(userId)) return; // Ensure only admin can proceed
+
+
+
+    const db = client.db(dbName);
+    const tasksCollection = db.collection(collectionName2)
+    const collection = db.collection(collectionName);
+
+
+    if (data === 'view_stats') {
+        const userCount = await collection.countDocuments();
+        bot.sendMessage(chatId, `👥 Total Users: ${userCount}`);
+    } else if (data === 'ban_user') {
+        bot.sendMessage(chatId, "Send the user ID to ban:");
+    } else if (data === 'approve_payment') {
+        bot.sendMessage(chatId, "Send the user ID for payment approval:");
+    } else if (data === 'send_notification') {
+        bot.sendMessage(chatId, "Send the message to broadcast:");
+    } else if (data === 'approve_youtube') {
+        bot.sendMessage(chatId, "🔹 YouTube tasks approval enabled.");
+    }   
+       else if (data === 'admin_add_task') {
+        bot.sendMessage(chatId, "Send the task details in the format: `Title | URL | Reward`");
+    } else if (data === 'admin_view_tasks') {
+
+        const tasks = await tasksCollection.find().toArray();
+        if (tasks.length === 0) {
+            return bot.sendMessage(chatId, "⚠️ No tasks available.");
+        }
+        let taskList = tasks.map((task, index) => `*${index + 1}.* ${task.title} - [Open](${task.url}) - 💰 ${task.reward} Birr`).join("\n\n");
+        return bot.sendMessage(chatId, `📋 *Task List:*\n\n${taskList}`, { parse_mode: "Markdown" });
+        
+    }if (data === "admin_delete_task") {
+            const tasks = await tasksCollection.find().toArray();
+            if (tasks.length === 0) {
+                return bot.sendMessage(chatId, "⚠️ No tasks to delete.");
+            }
+    
+            let inline_keyboard = tasks.map(task => [{ text: `🗑️ Delete ${task.title}`, callback_data: `delete_${task._id}` }]);
+            return bot.sendMessage(chatId, "Select a task to delete:", { reply_markup: { inline_keyboard } });
+        }
+        if (data.startsWith("delete_")) {
+            let taskId = data.replace("delete_", "");
+            await tasksCollection.deleteOne({ _id: new ObjectId(taskId) });
+            return bot.sendMessage(chatId, "✅ Task deleted successfully.");
+        }
+});
+
+// Handle New Task Input
+bot.on('message', async (msg) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+    const text = msg.text;
+
+    const db = client.db(dbName);
+    const tasksCollection = db.collection(collectionName2)
+    console.log("Using Collection:", collectionName2);
+
+    //const collection = db.collection(collectionName);
+
+    if (userId.toString() !== adminId) return;
+
+    if (text.includes("|")) {
+        let parts = text.split('|');
+        if (parts.length < 3) {
+            return bot.sendMessage(chatId, "⚠️ Invalid format! Use: `Title | URL | Reward`");
+        }
+
+        let title = parts[0].trim();
+        let url = parts[1].trim();
+        let reward = parseInt(parts[2].trim());
+
+        await tasksCollection.insertOne({ title, url, reward });
+
+        return bot.sendMessage(chatId, `✅ New task added:\n\n*${title}*\n[Open Task](${url})\n💰 Reward: ${reward} Birr`, { parse_mode: "Markdown" });
+    }
+});
 bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
@@ -89,21 +207,20 @@ bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
     console.log(`User ${userId} started bot with referrerId: ${referrerId}`);
     const db = client.db(dbName);
     const collection = db.collection(collectionName)
-    let user = await collection.findOne({ userId });
+    let user = await collection.findOne({ userId: Number(userId) });
 
     try {
 
         if (!user) {
-            // Generate referral link
-            //const referralLink = (`https://t.me/DailyCash?start=${userId}`, { parse_mode: 'Markdown' });
+            
             await collection.insertOne({ 
                 userId, 
                 chatId, 
                 referralLink:`https://t.me/leul50_bot?start=${userId}`,
-                language: 'en', // Default language
+                language: 'en',
                 referralCount: 0,
                 balance: 0,
-                referrerId: referrerId ? parseInt(referrerId) : null, // Store referrer ID if available
+                referrerId: referrerId ? parseInt(referrerId) : null, 
                 taskCompleted: { task1: false, task2: false },
             });
             if (referrerId && referrerId !== userId) {
@@ -223,86 +340,55 @@ bot.on('message', async (msg) => {
         }
     });
 });
+    
 
 
-// Handle "Complete Task" button
-bot.on('message', async (msg) => {
-    const chatId = msg.chat.id;
-    const userId = msg.from.id;
-    const text = msg.text;
 
-    const db = client.db(dbName);
-    const collection = db.collection(collectionName);
 
-    let user = await collection.findOne({ userId });
-
-    if (text === 'Complete Task') {
-        if (user && user.taskCompleted && user.taskCompleted.task1 && user.taskCompleted.task2) {
-            return bot.sendMessage(chatId, "✅ You have already completed this task and received your reward.");
-        }
-
-        // Simulate task completion (You can replace this with real task verification logic)
-        bot.sendMessage(chatId, "🎯 Task: Join our Telegram channel and click 'Done' when finished.", {
-            reply_markup: {
-                inline_keyboard: [[{ text: "Join Channel", url: "https://t.me/cheapnetn" }],
-                 [{ text: "Join youtube", url: "https://youtu.be/3n1KPBdZupk" }], 
-                 [{ text: "Done", callback_data: "task_done" }]
-            ]}
-        });
-    }
-});
-// Handle "Done" button click
+// Handle "button"  click for task completion
 bot.on('callback_query', async (callbackQuery) => {
     const chatId = callbackQuery.message.chat.id;
     const userId = callbackQuery.from.id;
     const data = callbackQuery.data;
 
     const db = client.db(dbName);
-    const collection = db.collection(collectionName);
+   const usersCollection = db.collection(collectionName);
+    const tasksCollection = db.collection(collectionName2);
 
-    let user = await collection.findOne({ userId });
+   
+    let user = await usersCollection.findOne({ userId });
+    if (!user) return;
 
-    if (data === "task_done") {
-        if (user && user.taskCompleted) {
+
+    if (data.startsWith("task_done")) {
+        let taskId=data.replace("task_done","");
+   
+         // Check if task exists
+         let task = await tasksCollection.findOne({ _id: new ObjectId(taskId) });
+         if (!task) {
+             return bot.answerCallbackQuery(callbackQuery.id, { text: "❌ Task not found." });
+         }
+
+        if (user.CompletedTasks.includes(taskId)) {
             return bot.answerCallbackQuery(callbackQuery.id, { text: "✅ You have already completed this task." });
         }
-
-        // Reward user with 5 Birr
-        let taskField = 'task1';
-        await collection.updateOne(
+              // Mark task as completed
+        await usersCollection.updateOne(
             { userId },
-            { $set: { taskCompleted: true }, $inc: { balance: 5 } }
+            { $push: { completedTasks: taskId }, $inc: { balance: task.reward } }
         );
+        bot.answerCallbackQuery(callbackQuery.id, { text: `🎉 Task completed! You earned ${task.reward} Birr.` });
+        
+       // Check if user completed all tasks
+       let allTasks = await tasksCollection.find().toArray();
+       let updatedUser = await usersCollection.findOne({ userId });
 
-        bot.answerCallbackQuery(callbackQuery.id, { text: "🎉 Task completed! You earned 5 Birr." });
-        bot.sendMessage(chatId, "💰 5 Birr has been added to your balance!");
+       if (updatedUser.completedTasks.length === allTasks.length) {
+           await usersCollection.updateOne({ userId }, { $set: { taskCompleted: true } });
+           bot.sendMessage(chatId, "🎉 All tasks completed! You earned a total of your rewards. 💰");
+       }
     }
 });
-
-bot.on('message', async (msg) => {
-    const chatId = msg.chat.id;
-    const text = msg.text;
-
-    if (text === 'Check Task Status') {
-        const db = client.db(dbName);
-        const collection = db.collection(collectionName);
-
-        let user = await collection.findOne({ userId: msg.from.id });
-
-        if (user) {
-            const tasks = user.taskCompleted;
-            let incompleteTasks = Object.keys(tasks).filter(task => !tasks[task]);
-            if (incompleteTasks.length > 0) {
-                return bot.sendMessage(chatId, `❌ You still need to complete the following tasks:\n- ${incompleteTasks.join('\n- ')}`);
-            } else {
-                return bot.sendMessage(chatId, "🎉 You have completed all tasks!");
-            }
-        } else {
-            return bot.sendMessage(chatId, "Sorry, we couldn't find your task progress.");
-        }
-    }
-});
-
 // Handle "Balance" option clicked by the user
 bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
@@ -359,7 +445,6 @@ bot.on('message', async (msg) => {
         let userLang = user ? user.language : 'en';
 
         if (text === 'Cashout') {
-            const userLang = cashoutData[chatId]?.language || 'en';
             bot.sendMessage(chatId, 'Please choose your bank:', {
                 reply_markup: {
                     keyboard: [
@@ -374,9 +459,8 @@ bot.on('message', async (msg) => {
         } else if (['CBEBirr', 'Commercial Bank of Ethiopia (CBE)', 'M-Pesa', 'telebirr'].includes(text)) {
             if (!cashoutData[chatId]) return;
             cashoutData[chatId].bank = text;
-            const userLang = cashoutData[chatId]?.language || 'en';
-            bot.sendMessage(chatId, text === 'Commercial Bank of Ethiopia (CBE)' ? messages[userLang].enterAccountNumber 
-                : messages[userLang].enterPhoneNumber); 
+
+            bot.sendMessage(chatId, text === 'Commercial Bank of Ethiopia (CBE)' ? 'Please enter your account number:' : 'Please enter your phone number:');
         } else if (cashoutData[chatId] && cashoutData[chatId].bank) {
             cashoutData[chatId].accountNumber = text;
             cashoutData[chatId].amount = 10;
@@ -427,7 +511,7 @@ bot.on('message', async (msg) => {
                 bot.sendMessage(chatId, 'You need to refer 5 people to unlock the course.');
             }
         } else if (text === 'Competitions') {
-            bot.sendMessage(chatId, 'Upcoming competitions:\n1. [Competition 1](http://example.com/competition1)\n2. [Competition 2](http://example.com/competition2)', { parse_mode: 'Markdown' });
+            bot.sendMessage(chatId, 'comming soon', { parse_mode: 'Markdown' });
         } else if (text === 'Referral Progress') {
             const db = client.db(dbName);
         const collection = db.collection(collectionName);
@@ -436,21 +520,23 @@ bot.on('message', async (msg) => {
 
         let user = await collection.findOne({ userId });
         console.log("User data from DB:", user);
-            
         if (user) {
+
             let userLang = user?.language && messages[user.language] ? user.language : 'en';
             let messageTemplate = messages[userLang]?.referralProgressMessage || "You have referred {count} people.";
-            const referralCount = user && user.referralCount ? user.referralCount : 0;
-            bot.sendMessage(chatId, messageTemplate.replace("{count}", referralCount));
-
+            const referralCount = user.referralCount || 0;
+            
+            // Build the message
             let referralProgressMessage = messageTemplate.replace("{count}", referralCount);
         referralProgressMessage += `\n\nYour referral link: ${user.referralLink}`; // Add referral link
 
         bot.sendMessage(chatId, referralProgressMessage);
-    } else {
-        bot.sendMessage(chatId, "Sorry, we couldn't find your referral progress. Please try again later.");
-
+        } else {
+            bot.sendMessage(chatId, "Sorry, we couldn't find your referral progress. Please try again later.");
         }
+            //let referralProgressMessage = messageTemplate.replace("{count}", referralCount);
+            //referralProgressMessage += `\n\nYour referral link: ${user.referralLink}`; 
+
 
         //let userLang = user?.language && messages[user.language] ? user.language : 'en';
         //let messageTemplate = messages[userLang]?.referralProgressMessage || "You have referred {count} people.";
