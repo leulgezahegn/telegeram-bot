@@ -74,26 +74,7 @@ const messages = {
         enterPhone: "እባኮትን የስልክ ቁጥርዎን ያስገቡ፡",
         language: "ቋንቋ"
     },
-    or: { welcome: "Baga nagaan dhuftan! 🎉",selectLanguage: "Mee afaan filadhu:",
-        referralLink: "Linkii kee addaa: ",
-        unlockCourse: "Koorso banuu",
-        competitions: "Tapha dorgommii",
-        referralProgress: "Sadarkaa maqa-gaggeessuu",
-        referralProgressMessage: "Namoota {count} affeerte.",
-        help: "Gargaarsa",
-        support: "Gargaarsa qunnamuu",
-        cashout: "Mallaqa baasuu",
-        checkBalance: "Hisaaba Ilaali",
-        completeTask: "Hojii Xumuri",
-
-
-        needReferral: "Koorso banuf namoota 5 ergaa qabdu.",
-        selectBank: "Mee baankii kee filadhu:",
-        enterAccount: "Mee lakkoofsa mana baankii kee galchi:",
-        enterPhone: "Mee lakkoofsa bilbila kee galchi:",
-        language: "Afaan" }
-};
-
+}
 // Store user cashout data temporarily
 let cashoutData = {};
 
@@ -277,7 +258,7 @@ bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
             // Ask user to select language
             return bot.sendMessage(chatId, "Please select your preferred language:", {
                 reply_markup: {
-                    keyboard: [[{ text: 'English' }, { text: 'Amharic' }, { text: 'Oromo' }]],
+                    keyboard: [[{ text: 'English' }, { text: 'Amharic' }]],
                     resize_keyboard: true,
                     one_time_keyboard: true
                 }
@@ -342,8 +323,8 @@ bot.on('message', async (msg) => {
             reply_markup: {
                 inline_keyboard: [
                     [{ text: "🇬🇧 English", callback_data: "set_lang_en" }],
-                    [{ text: "🇪🇹 Amharic", callback_data: "set_lang_am" }],
-                    [{ text: "🌍 Oromo", callback_data: "set_lang_or" }]
+                    [{ text: "🇪🇹 Amharic", callback_data: "set_lang_am" }]
+                    
                 ]
             }
         });
@@ -395,17 +376,7 @@ bot.on('callback_query', async (callbackQuery) => {
                 checkBalance: "ሂሳብ ይመልከቱ",
                 language: "ቋንቋ"
             },
-            or: {
-                welcome: "Baga Nagaan Dhuftan! 🎉",
-                unlockCourse: "Barnoota Bani",
-                competitions: "Tapha",
-                referralProgress: "Sadarkaa Ergaa",
-                support: "Deeggarsa",
-                cashout: "Baafata Maallaqaa",
-                completeTask: "Hojii Xumuri",
-                checkBalance: "Hisaaba Ilaali",
-                language: "Afaan"
-            }
+            
         };
 
         await bot.sendMessage(chatId, `✅ Language updated to ${langText}! 🎉`);
@@ -475,11 +446,18 @@ bot.on('callback_query', async (callbackQuery) => {
         const task = await tasksCollection.findOne({ _id: new ObjectId(taskId) });
 
         if (!task) {
-            return bot.answerCallbackQuery(callbackQuery.id, "⚠️ Task not found.");
+            return bot.answerCallbackQuery(callbackQuery.id, {
+                text:"⚠️ Task not found.",
+                show_alert: false
+            
+            });
         }
 
         if (user.taskCompleted && user.taskCompleted[taskId]) {
-            return bot.answerCallbackQuery(callbackQuery.id, "✅ You have already completed this task.");
+            return bot.answerCallbackQuery(callbackQuery.id, 
+                {  text:"✅ You have already completed this task.",
+                    show_alert: false
+                });
         }
 
         // Check if task is a "Join Channel" type
@@ -496,22 +474,34 @@ bot.on('callback_query', async (callbackQuery) => {
                     
                     isTaskCompleted = true;
                 } else {
-                    return bot.answerCallbackQuery(callbackQuery.id, "⚠️ You have not joined the channel yet. Please join first and try again.");
+                    return bot.answerCallbackQuery(callbackQuery.id, 
+                        {text:"⚠️ You have not joined the channel yet. Please join first and try again.",
+                            show_alert: true
+                        });
                 }
             } catch (error) {
                 console.error("Error checking chat member:", error);
-                return bot.answerCallbackQuery(callbackQuery.id, "⚠️ Unable to verify membership. Make sure the bot is an admin in the channel.");
+                return bot.answerCallbackQuery(callbackQuery.id, 
+                    { text:"⚠️ Unable to verify membership. Make sure the bot is an admin in the channel.",
+                             show_alert: true
+
+                    }
+                );
             }
         } else if (task.type === "like_post") {
             // Example: Verify if the user has liked a post (you need to implement this logic)
             isTaskCompleted = await verifyPostLike(task, userId); // Implement this function
         } else {
             // Handle other task types
-            return bot.answerCallbackQuery(callbackQuery.id, "⚠️ This task type is not supported yet.");
+            return bot.answerCallbackQuery(callbackQuery.id, {text:"⚠️ This task type is not supported yet.",
+                show_alert: true
+            });
         }
 
         if (!isTaskCompleted) {
-            return bot.answerCallbackQuery(callbackQuery.id, "⚠️ Task not completed. Please complete the task first.");
+            return bot.answerCallbackQuery(callbackQuery.id, {text:"⚠️ Task not completed. Please complete the task first.",
+                show_alert: true
+            });
         }
  
                     // User is a member, reward them
@@ -523,7 +513,8 @@ bot.on('callback_query', async (callbackQuery) => {
                         }
                     );
 
-                    return bot.answerCallbackQuery(callbackQuery.id, `🎉 Task completed!\n💰 You earned ${task.reward} Birr.`);
+                    return bot.answerCallbackQuery(callbackQuery.id, {text:`🎉 Task completed!\n💰 You earned ${task.reward} Birr.`,
+                    show_alert: true});
                 }  
             
         
@@ -573,7 +564,7 @@ bot.on('message', async (msg) => {
     try {
         let user = await collection.findOne({ userId });
 
-        if (['English', 'Amharic', 'Oromo'].includes(text)) {
+        if (['English', 'Amharic'].includes(text)) {
             let selectedLang = text === 'Amharic' ? 'am' : text === 'Oromo' ? 'or' : 'en';
             await collection.updateOne({ userId }, { $set: { language: selectedLang } });
 
