@@ -366,16 +366,22 @@ bot.on('callback_query', async (callbackQuery) => {
                 language: "Language"
             },
             am: {
-                welcome: "እንኳን ደህና መጡ! 🎉",
-                unlockCourse: "ትምህርት ይከፍቱ",
-                competitions: "ውድድር",
-                referralProgress: "ሪፈራል ሂደት",
-                support: "ድጋፍ",
-                cashout: "የገንዘብ ውጪ",
-                completeTask: "ተግባር ይጨርሱ",
-                checkBalance: "ሂሳብ ይመልከቱ",
-                language: "ቋንቋ"
-            },
+                welcome: "እንኳን ወደ በቀላሉ ገንዘብ መሰብሰቢያ ቦት በደህና መጡ! 🎉",
+        selectLanguage: "እባኮትን የሚወዷቸውን ቋንቋ ይምረጡ፡",
+        referralLink: "የእርስዎ ልዩ የማጋረያ አገናኝ፡ ",
+        unlockCourse: "ኮርስ ይክፈቱ",
+        competitions: "ውድድሮች",
+        referralProgress: "የማጋረያ ሂደት",
+        referralProgressMessage: "እስካሁን ያስመረቀዎት ሰዎች {count} ናቸው።",
+        help: "እርዳታ",
+        support: "የድጋፍፍ መረጃ",
+        cashout: "ገንዘብ ያውጡ",
+        needReferral: "ኮርሱን ለመክፈት 5 ሰዎችን ማጋረጃ አለቦት።",
+        selectBank: "እባኮትን የሚወዷቸውን ባንክ ይምረጡ፡",
+        enterAccount: "እባኮትን የባንክ መለያ ቁጥር ያስገቡ፡",
+        enterPhone: "እባኮትን የስልክ ቁጥርዎን ያስገቡ፡",
+        language: "ቋንቋ"
+            }
             
         };
 
@@ -404,8 +410,10 @@ bot.on('message', async (msg) => {
     const db = client.db(dbName);
     const tasksCollection = db.collection(collectionName2); // Ensure this is your "tasks" collection
     const usersCollection = db.collection(collectionName); // Users collection
+    const userLang = user.language || 'en'; // Default to English if not set
 
-    if (text === "Complete Task") {
+
+    if (text === messages[userLang].CompleteTask) {
         // Fetch available tasks from database
         const tasks = await tasksCollection.find().toArray();
         if (tasks.length === 0) {
